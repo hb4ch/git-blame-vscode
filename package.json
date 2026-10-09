@@ -1,0 +1,71 @@
+{
+  "name": "line-git-blame",
+  "displayName": "Line Git Blame",
+  "description": "Shows the author and commit info of each line in git-tracked files.",
+  "version": "0.1.0",
+  "publisher": "robertpeng",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hb4ch/git-blame-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitBlame.toggleFileBlame",
+        "title": "Toggle File Blame",
+        "category": "Git Blame"
+      },
+      {
+        "command": "gitBlame.toggleInline",
+        "title": "Toggle Current Line Blame",
+        "category": "Git Blame"
+      }
+    ],
+    "configuration": {
+      "title": "Git Blame",
+      "properties": {
+        "gitBlame.inlineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show blame info at the end of the current line."
+        },
+        "gitBlame.dateFormat": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "How commit dates are displayed."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "pretest": "npm run compile",
+    "test": "mocha out/test/**/*.test.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "mocha": "^10.4.0",
+    "typescript": "^5.4.0"
+  }
+}
