@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { blame, FileBlame, getRepoRoot } from './git';
+import { blame, blameRevision, FileBlame, getRepoRoot } from './git';
+import { EMPTY_REV, fromRevisionUri } from './revision';
 
 export interface DocumentBlame {
   repoRoot: string;
@@ -16,15 +17,12 @@ export class BlameCache {
   private entries = new Map<string, Entry>();
 
   get(doc: vscode.TextDocument): Promise<DocumentBlame | undefined> {
-    if (doc.uri.scheme !== 'file') {
-      return Promise.resolve(undefined);
-    }
     const key = doc.uri.toString();
     const cached = this.entries.get(key);
     if (cached && cached.version === doc.version) {
       return cached.result;
     }
-    const result = this.compute(doc);
+    const result = this.compute(doc).catch(() => undefined);
     this.entries.set(key, { version: doc.version, result });
     return result;
   }
@@ -38,17 +36,24 @@ export class BlameCache {
   }
 
   private async compute(doc: vscode.TextDocument): Promise<DocumentBlame | undefined> {
+    const rev = fromRevisionUri(doc.uri);
+    if (rev) {
+      if (rev.sha === EMPTY_REV) {
+        return undefined;
+      }
+      const lines = await blameRevision(rev.repoRoot, rev.sha, rev.filename);
+      return { repoRoot: rev.repoRoot, lines };
+    }
+    if (doc.uri.scheme !== 'file') {
+      return undefined;
+    }
     const file = doc.uri.fsPath;
     const repoRoot = await getRepoRoot(file);
     if (!repoRoot) {
       return undefined;
     }
-    try {
-      const lines = await blame(file, doc.isDirty ? doc.getText() : undefined);
-      return { repoRoot, lines };
-    } catch {
-      // Untracked or ignored file.
-      return undefined;
-    }
+    // Rejects for untracked or ignored files; get() maps that to undefined.
+    const lines = await blame(repoRoot, file, doc.isDirty ? doc.getText() : undefined);
+    return { repoRoot, lines };
   }
 }

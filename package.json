@@ -2,7 +2,7 @@
   "name": "line-git-blame",
   "displayName": "Line Git Blame",
   "description": "Shows the author and commit info of each line in git-tracked files.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "robertpeng",
   "license": "MIT",
   "repository": {
@@ -31,6 +31,24 @@
         "command": "gitBlame.toggleInline",
         "title": "Toggle Current Line Blame",
         "category": "Git Blame"
+      },
+      {
+        "command": "gitBlame.showCommitDiff",
+        "title": "Show Commit Diff for Current Line",
+        "category": "Git Blame",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "gitBlame.blamePreviousRevision",
+        "title": "Blame Previous Revision of Current Line",
+        "category": "Git Blame",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gitBlame.openCommitOnRemote",
+        "title": "Open Commit on Remote for Current Line",
+        "category": "Git Blame",
+        "icon": "$(link-external)"
       }
     ],
     "configuration": {

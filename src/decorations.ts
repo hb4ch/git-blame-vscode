@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BlameCache } from './blameCache';
-import { CommitInfo, commitMessage } from './git';
+import { COMMANDS, commandUri, toTarget } from './commands';
+import { commitMessage, commitWebUrl, getRemote, LineBlame, RemoteInfo } from './git';
 import {
   absoluteDate,
   DateFormat,
@@ -34,12 +35,20 @@ function nbsp(s: string): string {
   return s.replace(/ /g, ' ');
 }
 
-function hover(c: CommitInfo, message?: string): vscode.MarkdownString {
+function hover(
+  repoRoot: string,
+  line: LineBlame,
+  remote: RemoteInfo | undefined,
+  message?: string,
+): vscode.MarkdownString {
+  const c = line.commit;
   const md = new vscode.MarkdownString();
   if (c.uncommitted) {
     md.appendMarkdown('**Not committed yet**');
     return md;
   }
+  md.isTrusted = { enabledCommands: Object.values(COMMANDS) };
+  md.supportThemeIcons = true;
   md.appendMarkdown(`**${escape(c.author)}** `);
   if (c.authorMail) {
     md.appendMarkdown(`<${escape(c.authorMail)}>`);
@@ -48,7 +57,16 @@ function hover(c: CommitInfo, message?: string): vscode.MarkdownString {
   md.appendMarkdown(` · \`${shortSha(c.sha)}\``);
   md.appendMarkdown('\n\n---\n\n');
   md.appendText(message ?? c.summary);
-  md.appendMarkdown(`\n\n---\n\n\`${c.sha}\``);
+  md.appendMarkdown('\n\n---\n\n');
+  const target = toTarget(repoRoot, line);
+  const links = [`[$(diff) Show diff](${commandUri(COMMANDS.showCommitDiff, target)})`];
+  if (line.previous) {
+    links.push(`[$(history) Blame previous revision](${commandUri(COMMANDS.blamePrevious, target)})`);
+  }
+  if (remote) {
+    links.push(`[$(link-external) Open on ${escape(remote.name)}](${commitWebUrl(remote, c.sha)})`);
+  }
+  md.appendMarkdown(links.join(' &nbsp;|&nbsp; '));
   return md;
 }
 
@@ -111,26 +129,31 @@ export class BlameDecorator implements vscode.Disposable {
 
     const { inlineEnabled, dateFormat } = this.config;
     const line = editor.selection.active.line;
-    const commit = result.lines[line];
+    const blamed = result.lines[line];
+    const remote = await getRemote(result.repoRoot);
+    if (seq !== this.renderSeq) {
+      return;
+    }
 
-    this.renderGutter(editor, result.lines);
+    this.renderGutter(editor, result.repoRoot, result.lines, remote);
 
-    if (commit) {
-      this.statusBar.text = commit.uncommitted
+    if (blamed) {
+      const c = blamed.commit;
+      this.statusBar.text = c.uncommitted
         ? '$(git-commit) Not committed yet'
-        : `$(git-commit) ${commit.author}, ${relativeTime(commit.authorTime)}`;
+        : `$(git-commit) ${c.author}, ${relativeTime(c.authorTime)}`;
       this.statusBar.show();
     } else {
       this.statusBar.hide();
     }
 
-    if (!inlineEnabled || !commit || this.fileBlameEnabled) {
+    if (!inlineEnabled || !blamed || this.fileBlameEnabled) {
       editor.setDecorations(inlineDecoration, []);
       return;
     }
     let message: string | undefined;
-    if (!commit.uncommitted) {
-      message = await commitMessage(result.repoRoot, commit.sha).catch(() => undefined);
+    if (!blamed.commit.uncommitted) {
+      message = await commitMessage(result.repoRoot, blamed.commit.sha).catch(() => undefined);
       if (seq !== this.renderSeq) {
         return;
       }
@@ -139,13 +162,18 @@ export class BlameDecorator implements vscode.Disposable {
     editor.setDecorations(inlineDecoration, [
       {
         range: new vscode.Range(end, end),
-        hoverMessage: hover(commit, message),
-        renderOptions: { after: { contentText: inlineText(commit, dateFormat) } },
+        hoverMessage: hover(result.repoRoot, blamed, remote, message),
+        renderOptions: { after: { contentText: inlineText(blamed.commit, dateFormat) } },
       },
     ]);
   }
 
-  private renderGutter(editor: vscode.TextEditor, lines: CommitInfo[]): void {
+  private renderGutter(
+    editor: vscode.TextEditor,
+    repoRoot: string,
+    lines: LineBlame[],
+    remote: RemoteInfo | undefined,
+  ): void {
     if (!this.fileBlameEnabled) {
       editor.setDecorations(gutterDecoration, []);
       return;
@@ -154,18 +182,18 @@ export class BlameDecorator implements vscode.Disposable {
     let prevSha: string | undefined;
     const lineCount = editor.document.lineCount;
     for (let i = 0; i < Math.min(lines.length, lineCount); i++) {
-      const c = lines[i];
-      if (!c) {
+      const l = lines[i];
+      if (!l) {
         continue;
       }
       // Only label the first line of each consecutive run of the same commit.
-      const text = c.sha === prevSha ? '' : gutterText(c);
-      prevSha = c.sha;
+      const text = l.commit.sha === prevSha ? '' : gutterText(l.commit);
+      prevSha = l.commit.sha;
       const start = new vscode.Position(i, 0);
       decorations.push({
         range: new vscode.Range(start, start),
-        hoverMessage: hover(c),
-        renderOptions: { before: { contentText: nbsp(text) || ' ' } },
+        hoverMessage: hover(repoRoot, l, remote),
+        renderOptions: { before: { contentText: nbsp(text) || '\u00a0' } },
       });
     }
     editor.setDecorations(gutterDecoration, decorations);

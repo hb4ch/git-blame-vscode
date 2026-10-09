@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { BlameCache } from './blameCache';
+import { registerCommands } from './commands';
 import { BlameDecorator } from './decorations';
+import { RevisionContentProvider, REVISION_SCHEME } from './revision';
 
 export function activate(context: vscode.ExtensionContext): void {
   const cache = new BlameCache();
@@ -8,6 +10,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Commits, checkouts, resets, and staging all touch HEAD or the index.
   const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/{HEAD,index}');
+  // Editing the ignore list changes which commits lines are attributed to.
+  const ignoreRevsWatcher = vscode.workspace.createFileSystemWatcher('**/.git-blame-ignore-revs');
   const onGitChange = () => {
     cache.clear();
     decorator.scheduleRender(300);
@@ -18,6 +22,15 @@ export function activate(context: vscode.ExtensionContext): void {
     gitWatcher,
     gitWatcher.onDidChange(onGitChange),
     gitWatcher.onDidCreate(onGitChange),
+    ignoreRevsWatcher,
+    ignoreRevsWatcher.onDidChange(onGitChange),
+    ignoreRevsWatcher.onDidCreate(onGitChange),
+    ignoreRevsWatcher.onDidDelete(onGitChange),
+    vscode.workspace.registerTextDocumentContentProvider(
+      REVISION_SCHEME,
+      new RevisionContentProvider(),
+    ),
+    ...registerCommands(cache),
     vscode.commands.registerCommand('gitBlame.toggleFileBlame', () => {
       decorator.fileBlameEnabled = !decorator.fileBlameEnabled;
       void decorator.render();
